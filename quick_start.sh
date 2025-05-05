@@ -16,13 +16,13 @@ if [ "$#" -lt 2 ]; then
     echo -e "  ${GREEN}server${NC} - Iniciar como servidor de descoberta"
     echo -e "  ${GREEN}client${NC} - Iniciar como cliente"
     echo -e "  ${YELLOW}Exemplo: $0 server DiscoveryServer${NC}"
-    echo -e "  ${YELLOW}Exemplo: $0 client Player1 ~/ROMs/SNES/super_bomberman_4.sfc${NC}"
+    echo -e "  ${YELLOW}Exemplo: $0 client Player1 ~/ROMs/SNES/super_mario_kart.sfc${NC}"
     exit 1
 fi
 
 MODE=$1
 PLAYER_NAME=$2
-ROM_PATH=${3:-"$HOME/ROMs/SNES/super_bomberman_4.sfc"}
+ROM_PATH=${3:-"$HOME/ROMs/SNES/super_mario_kart.sfc"}
 
 # Verificar se os scripts Python existem
 if [ ! -f "discovery_server.py" ] || [ ! -f "p2p_client.py" ]; then

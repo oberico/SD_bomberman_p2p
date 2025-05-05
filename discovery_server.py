@@ -23,23 +23,22 @@ active_peers = {}
 MAX_PLAYERS = 4  # Limite máximo de jogadores
 
 def get_local_ip():
-    """Obtém o IP local da máquina"""
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        interfaces = ni.interfaces()
-        for interface in interfaces:
-            if interface.startswith('wl'):  # Interfaces wireless
-                addresses = ni.ifaddresses(interface)
-                if ni.AF_INET in addresses:
-                    return addresses[ni.AF_INET][0]['addr']
-        return '127.0.0.1'
-    except Exception as e:
-        logger.error(f"Erro ao obter IP local: {e}")
-        return '127.0.0.1'
+        s.connect(("8.8.8.8", 80))  # Google DNS
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = "127.0.0.1"
+    finally:
+        s.close()
+    return ip
 
 @app.route('/register', methods=['POST'])
 def register_peer():
     """Registra um novo peer no servidor"""
     data = request.json
+    print(f"Novo peer registrado: IP={data['ip']}, Porta={data['port']}")  # Debug
     peer_id = data.get('peer_id')
     peer_ip = data.get('ip', request.remote_addr)
     peer_port = data.get('port')

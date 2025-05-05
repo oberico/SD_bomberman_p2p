@@ -18,10 +18,10 @@ from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit
 import socketio as sio_client
 
-SNES9X_CORE = "/usr/lib/libretro/snes9x_libretro.so"
+SNES9X_CORE = "~/.config/retroarch/cores/snes9x_libretro.so"
 if not os.path.exists(SNES9X_CORE):
     # Tentar encontrar o core em outro local comum no Raspberry Pi
-    SNES9X_CORE = "/usr/lib/arm-linux-gnueabihf/libretro/snes9x_libretro.so"
+    SNES9X_CORE = "home/ramon/.config/retroarch/cores/snes9x_libretro.so"
     if not os.path.exists(SNES9X_CORE):
         print("[ERRO] Core SNES9x não encontrado!")
         sys.exit(1)
@@ -44,9 +44,8 @@ def find_snes_core():
     import platform
     
     possible_paths = [
-        "/usr/lib/x86_64-linux-gnu/libretro/snes9x_libretro.so",
-        "/usr/lib/arm-linux-gnueabihf/libretro/snes9x_libretro.so",
-        "/usr/lib/libretro/snes9x_libretro.so"
+        "~/.config/retroarch/cores/snes9x_libretro.so",
+        "home/ramon/.config/retroarch/cores/snes9x_libretro.so"
     ]
     
     for path in possible_paths:
@@ -235,28 +234,26 @@ class P2PClient:
             logger.warning(f"Falha ao notificar saída: {e}")
 
     def start_retroarch(self, is_host=False):
-        """Inicia o RetroArch com as configurações de NetPlay"""
-        retroarch_config = self.generate_retroarch_config(is_host)
-        
-        if is_host:
-            for peer_id, peer in self.peers.items():
-                if peer_id != self.peer_id:
-                    try:
-                        requests.post(
-                            f"http://{peer['ip']}:{peer['port']}/start_game",
-                            json={"host_id": self.peer_id}
-                        )
-                    except requests.exceptions.RequestException as e:
-                        logger.warning(f"Falha ao notificar peer {peer['name']}: {e}")
+        config_path = self.generate_retroarch_config(is_host)
+        host_ip = self.peers[list(self.peers.keys())[0]]["ip"]
+        print(f"Conectando ao host: {host_ip}")  # Debug
         
         cmd = [
-            RETROARCH_PATH,
-            "--verbose",
-            f"--libretro={SNES_CORE_PATH}",
-            "--config", retroarch_config,
-            "--appendconfig", retroarch_config,
-            self.rom_path
+            "retroarch",
+            "-L", SNES_CORE_PATH,  # Caminho absoluto do core
+            "--config", config_path,
+            "--appendconfig", config_path,
+            self.rom_path,
+            # Forçar modo NetPlay (opcional)
+            "--netplaymode", "host" if is_host else "client",
+            "--netplayport", "55435",
         ]
+        
+        if not is_host:
+            host_ip = self.peers[list(self.peers.keys())[0]]["ip"]
+            cmd.extend(["--netplayip", host_ip])
+        
+        subprocess.run(cmd)
         
         logger.info(f"Iniciando RetroArch: {' '.join(cmd)}")
         
