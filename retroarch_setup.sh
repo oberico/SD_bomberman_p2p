@@ -48,6 +48,8 @@ netplay_use_mitm_server = "false"
 netplay_ip_port = "55435"
 netplay_delay_frames = "2"
 netplay_check_frames = "30"
+netplay_client_swap_input = "false"
+netplay_player_index = "0" 
 
 # Configuração específica para SNES
 input_libretro_device_p1 = "1"
@@ -61,6 +63,7 @@ input_player2_joypad_index = "1"
 input_player3_joypad_index = "2"
 input_player4_joypad_index = "3"
 EOL
+
 
 echo "Configuração do RetroArch para NetPlay concluída!"
 
