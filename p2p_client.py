@@ -196,18 +196,19 @@ class P2PClient:
             return False
 
     def get_player_index(self):
-        """Determina o índice do jogador baseado na ordem de conexão"""
-        if not self.peers:
+        """Define o índice do jogador baseado na ordem de conexão"""
+        if not self.peers:  # Primeiro jogador (host)
             return 0
-            
-        # Ordenar peers por ordem de chegada (simplificado)
+        
+        # Lista de peers ordenados por tempo de conexão
         sorted_peers = sorted(self.peers.items(), key=lambda x: x[1].get('last_seen', 0))
         
+        # Encontra a posição deste peer na lista
         for idx, (peer_id, _) in enumerate(sorted_peers):
             if peer_id == self.peer_id:
                 return idx
         
-        return len(sorted_peers)
+        return 0  # Fallback seguro
 
     def heartbeat_loop(self):
         """Envia heartbeats periódicos para o servidor de descoberta"""
@@ -266,32 +267,23 @@ class P2PClient:
             logger.error(f"Erro ao iniciar RetroArch: {e}")
 
     def generate_retroarch_config(self, is_host):
-        """Gera arquivo de configuração temporário para o RetroArch"""
         config_dir = os.path.expanduser("~/.config/bomberman_p2p")
         os.makedirs(config_dir, exist_ok=True)
         config_path = os.path.join(config_dir, "retroarch_netplay.cfg")
         
         config = [
-            "netplay_mode = {0}".format("host" if is_host else "client"),
-            "netplay_client_swap_input = false",  # Impede a troca automática de controles
-            f"netplay_player_index = {self.player_index}",  # Define o índice do jogador
+            f"netplay_mode = {'host' if is_host else 'client'}",
+            "netplay_client_swap_input = false",  # 🔥 Crucial: desativa troca automática
+            f"netplay_player_index = {self.player_index}",  # Índice definido automaticamente
             "netplay_delay_frames = 2",
-            "netplay_nickname = \"{0}\"".format(self.player_name),
-            "netplay_public_announce = false",
-            "netplay_spectate_password = \"\"",
-            "netplay_password = \"\"",
-            "netplay_spectator_mode_enable = false",
-            "netplay_use_mitm_server = false",
+            f"netplay_nickname = \"{self.player_name}\"",
             "netplay_ip_port = 55435",
         ]
         
         if not is_host:
-            host_peer = next(
-                (peer for peer_id, peer in self.peers.items() if peer_id != self.peer_id),
-                None
-            )
-            if host_peer:
-                config.append(f"netplay_ip_address = \"{host_peer['ip']}\"")
+            host_ip = next((p['ip'] for p in self.peers.values() if p['ip'] != self.local_ip), None)
+            if host_ip:
+                config.append(f"netplay_ip_address = \"{host_ip}\"")
         
         with open(config_path, 'w') as f:
             f.write('\n'.join(config))
