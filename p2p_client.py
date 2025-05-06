@@ -228,15 +228,12 @@ class P2PClient:
         """Inicia o RetroArch com NetPlay configurado"""
         config_path = self.generate_retroarch_config(is_host)
 
-        # Validações pré-execução
+        # Garante que a ROM existe
         if not os.path.exists(self.rom_path):
             logger.error(f"ROM não encontrada: {self.rom_path}")
             return
-        if not os.path.exists(SNES_CORE_PATH):
-            logger.error(f"SNES Core não encontrado: {SNES_CORE_PATH}")
-            return
 
-        # Monta o comando
+        # Monta o comando base
         cmd = [
             RETROARCH_PATH,
             "-L", SNES_CORE_PATH,
@@ -245,24 +242,34 @@ class P2PClient:
             "--verbose"
         ]
 
+        # Modo Host
         if is_host:
             cmd.append("--host")
             logger.info("Iniciando como host...")
-            try:
-                self.socketio.emit('start_game', {'triggered_by': self.peer_id})
-            except Exception as e:
-                logger.warning(f"Falha ao emitir evento 'start_game': {e}")
+            
+            # Notifica todos os peers para iniciar o jogo
+            for peer_id, peer in self.peers.items():
+                if peer_id != self.peer_id:
+                    try:
+                        requests.post(
+                            f"http://{peer['ip']}:{peer['port']}/start_game",
+                            json={"host_id": self.peer_id}
+                        )
+                    except Exception as e:
+                        logger.warning(f"Falha ao notificar peer {peer['name']}: {e}")
+
+        # Modo Cliente
         else:
             if not self.peers:
                 logger.warning("Nenhum peer conectado. Não é possível iniciar.")
                 return
+            
             host_ip = next(iter(self.peers.values()))['ip']
             logger.info(f"Conectando ao host em {host_ip}")
             cmd.extend(["--connect", host_ip])
 
         logger.info(f"Executando RetroArch: {' '.join(cmd)}")
         try:
-            # Inicia o processo sem bloquear o script
             subprocess.Popen(cmd)
         except Exception as e:
             logger.error(f"Erro ao iniciar RetroArch: {e}")
