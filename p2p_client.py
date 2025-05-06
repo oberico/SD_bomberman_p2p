@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # p2p_client.py
-# Cliente P2P para Super Bomberman 4 - Versão Atualizada
+# Cliente P2P para jogo Super Bomberman 4 - Versão Corrigida
 
 import os
 import sys
@@ -18,13 +18,13 @@ from flask import Flask, request, jsonify
 from flask_socketio import SocketIO
 import socketio as sio_client
 
-# Detecta automaticamente o caminho do core SNES
+# Detecta core SNES automaticamente
 def find_snes_core():
-    possible_paths = [
+    paths = [
         "~/.config/retroarch/cores/snes9x_libretro.so",
         "/home/joabson/.config/retroarch/cores/snes9x_libretro.so"
     ]
-    for path in possible_paths:
+    for path in paths:
         if os.path.exists(path):
             return path
     try:
@@ -34,7 +34,8 @@ def find_snes_core():
             return result.stdout.strip().split('\n')[0]
     except Exception as e:
         print(f"[AVISO] Não foi possível procurar o core: {e}")
-    return "/home/joabson/.config/retroarch/cores/snes9x_libretro.so"  # Fallback
+    return "/home/joabson/.config/retroarch/cores/snes9x_libretro.so"
+
 
 SNES_CORE_PATH = find_snes_core()
 RETROARCH_PATH = "retroarch"
@@ -55,21 +56,20 @@ class P2PClient:
         self.running = True
         self.client_port = self.find_available_port(5001)
         self.local_ip = self.get_local_ip()
-        self.player_index = 0  # Player index começa em 0 (Player 1), usado como index+1
+        self.player_index = 0  # Base 0 → usado como index+1
         self.app = Flask(__name__)
         self.socketio = SocketIO(self.app, cors_allowed_origins="*")
         self.setup_routes()
 
-        # SocketIO client para comunicação com servidor central
+        # Socket.IO Client
         self.sio_client = sio_client.Client()
         self.setup_socketio_client()
 
     def get_local_ip(self):
-        """Obtém o IP local da máquina"""
         try:
             interfaces = ni.interfaces()
             for interface in interfaces:
-                if interface.startswith(('wl', 'en')):  # Wireless ou Ethernet
+                if interface.startswith(('wl', 'en')):
                     addresses = ni.ifaddresses(interface)
                     if ni.AF_INET in addresses:
                         return addresses[ni.AF_INET][0]['addr']
@@ -79,7 +79,6 @@ class P2PClient:
             return '127.0.0.1'
 
     def find_available_port(self, start_port):
-        """Encontra uma porta disponível começando da porta inicial"""
         port = start_port
         while port < start_port + 100:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -90,7 +89,7 @@ class P2PClient:
                 port += 1
             finally:
                 sock.close()
-        raise RuntimeError("Não foi possível encontrar uma porta disponível")
+        raise RuntimeError("Porta indisponível")
 
     def setup_routes(self):
         @self.app.route('/game_state', methods=['POST'])
@@ -114,8 +113,8 @@ class P2PClient:
         def on_new_peer(data):
             peer_id = data.get('peer_id')
             if peer_id != self.peer_id and peer_id not in self.peers:
-                logger.info(f"Novo peer conectado: {data.get('name')}")
                 self.peers[peer_id] = data
+                logger.info(f"Novo peer conectado: {data.get('name')}")
 
         @self.sio_client.on('peer_left')
         def on_peer_left(data):
@@ -161,8 +160,8 @@ class P2PClient:
             else:
                 logger.error(f"Erro no registro: {data.get('message')}")
                 return False
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Falha ao conectar ao servidor de descoberta: {e}")
+        except Exception as e:
+            logger.error(f"Falha ao conectar ao servidor: {e}")
             return False
 
     def get_player_index(self):
@@ -182,9 +181,8 @@ class P2PClient:
                     json={"peer_id": self.peer_id}
                 )
                 time.sleep(10)
-            except requests.exceptions.RequestException as e:
-                logger.warning(f"Falha no heartbeat: {e}")
-                time.sleep(5)
+            except Exception as e:
+                logger.warning(f"Heartbeat falhou: {e}")
 
     def leave_game(self):
         try:
@@ -194,7 +192,7 @@ class P2PClient:
             )
             logger.info("Saída do jogo notificada")
         except Exception as e:
-            logger.warning(f"Falha ao notificar saída: {e}")
+            logger.warning(f"Erro ao sair: {e}")
 
     def generate_retroarch_config(self, is_host):
         config_dir = os.path.expanduser("~/.config/bomberman_p2p")
@@ -233,7 +231,7 @@ class P2PClient:
             logger.error(f"ROM não encontrada: {self.rom_path}")
             return
         if not os.path.exists(SNES_CORE_PATH):
-            logger.error(f"SNES Core não encontrado: {SNES_CORE_PATH}")
+            logger.error(f"Core SNES não encontrado: {SNES_CORE_PATH}")
             return
 
         cmd = [
@@ -252,7 +250,7 @@ class P2PClient:
                 logger.warning(f"Erro ao emitir evento start_game: {e}")
         else:
             if not self.peers:
-                logger.warning("Nenhum peer conectado. Não é possível iniciar.")
+                logger.warning("Nenhum peer conectado.")
                 return
             host_ip = next(iter(self.peers.values()))['ip']
             cmd.extend(["--connect", host_ip])
@@ -321,7 +319,7 @@ class P2PClient:
 def main():
     if len(sys.argv) < 4:
         print(f"Uso: {sys.argv[0]} <nome_jogador> <servidor_descoberta> <caminho_rom>")
-        print("Exemplo: python3 p2p_client.py berico 192.168.38.1:5000 /path/to/super_bomberman_4.sfc")
+        print("Exemplo: python3 p2p_client.py berico 192.168.0.185:5000 /path/to/rom.sfc")
         sys.exit(1)
 
     player_name = sys.argv[1]
