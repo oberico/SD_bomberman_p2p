@@ -18,11 +18,16 @@ from flask import Flask, request, jsonify
 from flask_socketio import SocketIO
 import socketio as sio_client
 
-# Detecta core SNES automaticamente
+# Configuração do logger
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger('p2p_client')
+
+# Caminho do core SNES (encontrado automaticamente)
 def find_snes_core():
     paths = [
         "~/.config/retroarch/cores/snes9x_libretro.so",
-        "/home/joabson/.config/retroarch/cores/snes9x_libretro.so"
+        "/home/ramon/.config/retroarch/cores/snes9x_libretro.so"
     ]
     for path in paths:
         if os.path.exists(path):
@@ -34,16 +39,10 @@ def find_snes_core():
             return result.stdout.strip().split('\n')[0]
     except Exception as e:
         print(f"[AVISO] Não foi possível procurar o core: {e}")
-    return "/home/joabson/.config/retroarch/cores/snes9x_libretro.so"
-
+    return "/home/ramon/.config/retroarch/cores/snes9x_libretro.so"
 
 SNES_CORE_PATH = find_snes_core()
 RETROARCH_PATH = "retroarch"
-
-# Configuração do logger
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger('p2p_client')
 
 class P2PClient:
     def __init__(self, player_name, discovery_server, rom_path):
@@ -66,10 +65,11 @@ class P2PClient:
         self.setup_socketio_client()
 
     def get_local_ip(self):
+        """Obtém o IP local da máquina"""
         try:
             interfaces = ni.interfaces()
             for interface in interfaces:
-                if interface.startswith(('wl', 'en')):
+                if interface.startswith(('wl', 'en')):  # Wireless ou Ethernet
                     addresses = ni.ifaddresses(interface)
                     if ni.AF_INET in addresses:
                         return addresses[ni.AF_INET][0]['addr']
@@ -79,6 +79,7 @@ class P2PClient:
             return '127.0.0.1'
 
     def find_available_port(self, start_port):
+        """Encontra uma porta disponível começando da porta inicial"""
         port = start_port
         while port < start_port + 100:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -203,7 +204,7 @@ class P2PClient:
             "netplay = true",
             f"netplay_mode = {'host' if is_host else 'client'}",
             "netplay_client_swap_input = false",
-            f"netplay_player_index = {self.player_index + 1}",  # Ajustado para base 1
+            f"netplay_player_index = {self.player_index + 1}",  # Índice base 1
             "netplay_delay_frames = 2",
             f"netplay_nickname = \"{self.player_name}\"",
             "netplay_public_announce = false",
@@ -224,16 +225,32 @@ class P2PClient:
         logger.info(f"Arquivo de configuração gerado: {config_path}")
         return config_path
 
+    def wait_for_host(self, host_ip, timeout=10, port=55435):
+        """Espera até que o host esteja aceitando conexões"""
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        try:
+            sock.connect((host_ip, port))
+            logger.info(f"Host {host_ip} está pronto.")
+            return True
+        except socket.error:
+            logger.warning(f"Host {host_ip} ainda não está pronto.")
+            return False
+        finally:
+            sock.close()
+
     def start_retroarch(self, is_host=False):
-        """Inicia o RetroArch com NetPlay configurado"""
         config_path = self.generate_retroarch_config(is_host)
 
-        # Garante que a ROM existe
         if not os.path.exists(self.rom_path):
             logger.error(f"ROM não encontrada: {self.rom_path}")
             return
 
-        # Monta o comando base
+        if not os.path.exists(SNES_CORE_PATH):
+            logger.error(f"Core SNES não encontrado: {SNES_CORE_PATH}")
+            return
+
         cmd = [
             RETROARCH_PATH,
             "-L", SNES_CORE_PATH,
@@ -242,31 +259,25 @@ class P2PClient:
             "--verbose"
         ]
 
-        # Modo Host
         if is_host:
-            cmd.append("--host")
-            logger.info("Iniciando como host...")
-            
-            # Notifica todos os peers para iniciar o jogo
-            for peer_id, peer in self.peers.items():
-                if peer_id != self.peer_id:
-                    try:
-                        requests.post(
-                            f"http://{peer['ip']}:{peer['port']}/start_game",
-                            json={"host_id": self.peer_id}
-                        )
-                    except Exception as e:
-                        logger.warning(f"Falha ao notificar peer {peer['name']}: {e}")
-
-        # Modo Cliente
+            cmd.extend(["--host"])
+            logger.info("Iniciando como HOST...")
+            try:
+                self.socketio.emit('start_game', {'triggered_by': self.peer_id})
+            except Exception as e:
+                logger.warning(f"Erro ao emitir evento start_game: {e}")
         else:
             if not self.peers:
-                logger.warning("Nenhum peer conectado. Não é possível iniciar.")
+                logger.warning("Nenhum peer conectado.")
                 return
-            
+
             host_ip = next(iter(self.peers.values()))['ip']
-            logger.info(f"Conectando ao host em {host_ip}")
+            logger.info(f"Aguardando host {host_ip} ficar pronto...")
+            if not self.wait_for_host(host_ip, timeout=10):
+                logger.warning("Host não respondeu a tempo. Tentando iniciar mesmo assim...")
+
             cmd.extend(["--connect", host_ip])
+            logger.info(f"Conectando ao host em {host_ip}")
 
         logger.info(f"Executando RetroArch: {' '.join(cmd)}")
         try:
@@ -318,7 +329,6 @@ class P2PClient:
                         logger.info(f"  - {peer['name']} ({peer['ip']}:{peer['port']}){host_status}")
                 elif command.lower() in ['sair', '3']:
                     self.running = False
-                    break
                 else:
                     logger.info("Comando inválido.")
         except KeyboardInterrupt:
@@ -332,7 +342,7 @@ class P2PClient:
 def main():
     if len(sys.argv) < 4:
         print(f"Uso: {sys.argv[0]} <nome_jogador> <servidor_descoberta> <caminho_rom>")
-        print("Exemplo: python3 p2p_client.py berico 192.168.0.185:5000 /path/to/rom.sfc")
+        print("Exemplo: python3 p2p_client.py berico 192.168.0.1:5000 /path/to/rom.sfc")
         sys.exit(1)
 
     player_name = sys.argv[1]
