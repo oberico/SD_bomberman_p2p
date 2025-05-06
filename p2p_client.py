@@ -225,15 +225,18 @@ class P2PClient:
         return config_path
 
     def start_retroarch(self, is_host=False):
+        """Inicia o RetroArch com NetPlay configurado"""
         config_path = self.generate_retroarch_config(is_host)
 
+        # Validações pré-execução
         if not os.path.exists(self.rom_path):
             logger.error(f"ROM não encontrada: {self.rom_path}")
             return
         if not os.path.exists(SNES_CORE_PATH):
-            logger.error(f"Core SNES não encontrado: {SNES_CORE_PATH}")
+            logger.error(f"SNES Core não encontrado: {SNES_CORE_PATH}")
             return
 
+        # Monta o comando
         cmd = [
             RETROARCH_PATH,
             "-L", SNES_CORE_PATH,
@@ -243,23 +246,26 @@ class P2PClient:
         ]
 
         if is_host:
-            cmd.extend(["--host"])
+            cmd.append("--host")
+            logger.info("Iniciando como host...")
             try:
                 self.socketio.emit('start_game', {'triggered_by': self.peer_id})
             except Exception as e:
-                logger.warning(f"Erro ao emitir evento start_game: {e}")
+                logger.warning(f"Falha ao emitir evento 'start_game': {e}")
         else:
             if not self.peers:
-                logger.warning("Nenhum peer conectado.")
+                logger.warning("Nenhum peer conectado. Não é possível iniciar.")
                 return
             host_ip = next(iter(self.peers.values()))['ip']
+            logger.info(f"Conectando ao host em {host_ip}")
             cmd.extend(["--connect", host_ip])
 
-        logger.info(f"Iniciando RetroArch com: {' '.join(cmd)}")
+        logger.info(f"Executando RetroArch: {' '.join(cmd)}")
         try:
+            # Inicia o processo sem bloquear o script
             subprocess.Popen(cmd)
         except Exception as e:
-            logger.error(f"Erro ao executar RetroArch: {e}")
+            logger.error(f"Erro ao iniciar RetroArch: {e}")
 
     def run(self):
         if not self.register_with_discovery_server():
