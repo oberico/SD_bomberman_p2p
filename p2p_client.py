@@ -201,39 +201,56 @@ class P2PClient:
             "netplay = true",
             f"netplay_mode = {'host' if is_host else 'client'}",
             "netplay_client_swap_input = false",
-            f"netplay_player_index = {self.player_index + 1}",  # Ajustado para base 1
+            f"netplay_player_index = {self.player_index + 1}",  # Índice base 1
             "netplay_delay_frames = 2",
             f"netplay_nickname = \"{self.player_name}\"",
             "netplay_public_announce = false",
             "netplay_password = \"\"",
             "netplay_spectator_mode_enable = false",
             "netplay_use_mitm_server = false",
-            "savefile_directory = \"/tmp\"",
-            "netplay_ip_port = 55435"
+            'savefile_directory = "/tmp"',
+            "netplay_ip_port = 55435",
         ]
 
         if not is_host:
-            host_ip = next(iter(self.peers.values()))['ip']
-            config.append(f"netplay_ip_address = \"{host_ip}\"")
+            host_peer = next((peer for pid, peer in self.peers.items() if pid != self.peer_id), None)
+            if host_peer:
+                config.append(f"netplay_ip_address = \"{host_peer['ip']}\"")
 
         with open(config_path, 'w') as f:
             f.write('\n'.join(config))
         logger.info(f"Arquivo de configuração gerado: {config_path}")
+
         return config_path
 
     def start_retroarch(self, is_host=False):
         config_path = self.generate_retroarch_config(is_host)
+        
+        # Verifica se a ROM existe
+        if not os.path.exists(self.rom_path):
+            logger.error(f"ROM não encontrada: {self.rom_path}")
+            return
+        
+        # Verifica se o core SNES9x existe
+        if not os.path.exists(SNES_CORE_PATH):
+            logger.error(f"SNES Core não encontrado: {SNES_CORE_PATH}")
+            return
+
         cmd = [
             RETROARCH_PATH,
             "-L", SNES_CORE_PATH,
             "--appendconfig", config_path,
-            "--player-number", str(self.player_index + 1),  # Força número do jogador
             self.rom_path,
             "--verbose"
         ]
+
         if is_host:
             cmd.extend(["--host"])
         else:
+            # Garante que tem pelo menos um peer conectado
+            if not self.peers:
+                logger.warning("Nenhum peer conectado. Não é possível iniciar.")
+                return
             host_ip = next(iter(self.peers.values()))['ip']
             cmd.extend(["--connect", host_ip])
 
@@ -241,7 +258,7 @@ class P2PClient:
         try:
             subprocess.Popen(cmd)
         except Exception as e:
-            logger.error(f"Erro ao iniciar RetroArch: {e}")
+            logger.error(f"Erro ao executar RetroArch: {e}")
 
     def run(self):
         if not self.register_with_discovery_server():
