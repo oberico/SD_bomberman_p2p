@@ -248,12 +248,19 @@ class P2PClient:
         return config_path
 
     def start_retroarch(self, is_host=False):
+        """Inicia o RetroArch com NetPlay configurado"""
         config_path = self.generate_retroarch_config(is_host)
 
+        # Validações pré-execução
         if not os.path.exists(self.rom_path):
             logger.error(f"ROM não encontrada: {self.rom_path}")
             return
 
+        if not os.path.exists(SNES_CORE_PATH):
+            logger.error(f"SNES Core não encontrado: {SNES_CORE_PATH}")
+            return
+
+        # Monta o comando base
         cmd = [
             RETROARCH_PATH,
             "-L", SNES_CORE_PATH,
@@ -262,22 +269,44 @@ class P2PClient:
             "--verbose"
         ]
 
+        # Modo Host
         if is_host:
             cmd.append("--host")
+            logger.info("Iniciando como host...")
+            
+            # Notifica todos os peers para iniciar o jogo
+            for peer_id, peer in self.peers.items():
+                if peer_id != self.peer_id:
+                    try:
+                        requests.post(
+                            f"http://{peer['ip']}:{peer['port']}/start_game",
+                            json={"host_id": self.peer_id}
+                        )
+                    except Exception as e:
+                        logger.warning(f"Falha ao notificar peer {peer['name']}: {e}")
+
+        # Modo Cliente
         else:
-            host_peer = next((peer for pid, peer in self.peers.items() if pid != self.peer_id), None)
-            if not host_peer:
-                logger.error("Nenhum host encontrado entre os peers.")
+            if not self.peers:
+                logger.warning("Nenhum peer conectado. Não é possível iniciar.")
                 return
-            host_ip = host_peer['ip']
-            logger.info(f"Conectando ao host: {host_ip}")
+            
+            # Garante que estamos pegando o IP do host, e não de outro cliente
+            host_peer = next((peer for peer_id, peer in self.peers.items() if peer_id != self.peer_id), None)
+            if host_peer:
+                host_ip = host_peer['ip']
+            else:
+                logger.error("Host não encontrado entre os peers.")
+                return
+            logger.info(f"Conectando ao host em {host_ip}")
             cmd.extend(["--connect", host_ip])
 
-        logger.info(f"Iniciando RetroArch com: {' '.join(cmd)}")
+        logger.info(f"Executando RetroArch: {' '.join(cmd)}")
         try:
+            # Inicia o processo sem bloquear o script
             subprocess.Popen(cmd)
         except Exception as e:
-            logger.error(f"Erro ao executar RetroArch: {e}")
+            logger.error(f"Erro ao iniciar RetroArch: {e}")
 
     def run(self):
         if not self.register_with_discovery_server():
