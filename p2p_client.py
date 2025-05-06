@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # p2p_client.py
-# Cliente P2P para jogo Super Bomberman 4 - Versão Corrigida
+# Cliente P2P para Super Bomberman 4 - Versão Simples com Reconexão Automática
 
 import os
 import sys
@@ -18,31 +18,35 @@ from flask import Flask, request, jsonify
 from flask_socketio import SocketIO
 import socketio as sio_client
 
-# Configuração do logger
+# Configurações
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('p2p_client')
 
-# Caminho do core SNES (encontrado automaticamente)
+RETROARCH_PATH = "retroarch"
+ROM_PATH = ""  # Será definido via linha de comando
+CLIENT_PORT = 5001
+HEARTBEAT_INTERVAL = 10
+
 def find_snes_core():
     paths = [
         "~/.config/retroarch/cores/snes9x_libretro.so",
-        "/home/ramon/.config/retroarch/cores/snes9x_libretro.so"
+        "/home/joabson/.config/retroarch/cores/snes9x_libretro.so"
     ]
     for path in paths:
         if os.path.exists(path):
             return path
     try:
+        import subprocess
         result = subprocess.run(["find", "/usr", "-name", "snes9x_libretro.so"],
                                capture_output=True, text=True)
         if result.stdout:
             return result.stdout.strip().split('\n')[0]
     except Exception as e:
-        print(f"[AVISO] Não foi possível procurar o core: {e}")
-    return "/home/ramon/.config/retroarch/cores/snes9x_libretro.so"
+        logger.warning(f"Erro ao buscar core SNES: {e}")
+    return "/home/joabson/.config/retroarch/cores/snes9x_libretro.so"
 
 SNES_CORE_PATH = find_snes_core()
-RETROARCH_PATH = "retroarch"
 
 class P2PClient:
     def __init__(self, player_name, discovery_server, rom_path):
@@ -53,7 +57,7 @@ class P2PClient:
         self.peers = {}
         self.is_host = False
         self.running = True
-        self.client_port = self.find_available_port(5001)
+        self.client_port = self.find_available_port(CLIENT_PORT)
         self.local_ip = self.get_local_ip()
         self.player_index = 0  # Base 0 → usado como index+1
         self.app = Flask(__name__)
@@ -65,11 +69,10 @@ class P2PClient:
         self.setup_socketio_client()
 
     def get_local_ip(self):
-        """Obtém o IP local da máquina"""
         try:
             interfaces = ni.interfaces()
             for interface in interfaces:
-                if interface.startswith(('wl', 'en')):  # Wireless ou Ethernet
+                if interface.startswith(('wl', 'en')):
                     addresses = ni.ifaddresses(interface)
                     if ni.AF_INET in addresses:
                         return addresses[ni.AF_INET][0]['addr']
@@ -79,7 +82,6 @@ class P2PClient:
             return '127.0.0.1'
 
     def find_available_port(self, start_port):
-        """Encontra uma porta disponível começando da porta inicial"""
         port = start_port
         while port < start_port + 100:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -151,7 +153,6 @@ class P2PClient:
             data = response.json()
             if response.status_code == 200:
                 self.peers = data.get('peers', {})
-                logger.info(f"Registrado com sucesso. Peers ativos: {len(self.peers)}")
                 self.player_index = self.get_player_index()
                 logger.info(f"Você é o Player {self.player_index + 1}")
                 if len(self.peers) == 1:
@@ -181,7 +182,7 @@ class P2PClient:
                     f"http://{self.discovery_server}/heartbeat",
                     json={"peer_id": self.peer_id}
                 )
-                time.sleep(10)
+                time.sleep(HEARTBEAT_INTERVAL)
             except Exception as e:
                 logger.warning(f"Heartbeat falhou: {e}")
 
@@ -195,6 +196,26 @@ class P2PClient:
         except Exception as e:
             logger.warning(f"Erro ao sair: {e}")
 
+    def wait_for_host(self, host_ip, timeout=10, retries=5):
+        """Espera até que o host esteja aceitando conexões"""
+        import socket
+        attempt = 0
+        while attempt < retries and self.running:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(timeout)
+            try:
+                sock.connect((host_ip, 55435))  # Porta do NetPlay
+                logger.info(f"Host {host_ip} está pronto.")
+                return True
+            except socket.error:
+                logger.warning(f"Tentativa {attempt + 1}: Host ainda não está pronto. Aguardando...")
+                time.sleep(3)
+                attempt += 1
+            finally:
+                sock.close()
+        logger.error("Não foi possível alcançar o host após múltiplas tentativas.")
+        return False
+
     def generate_retroarch_config(self, is_host):
         config_dir = os.path.expanduser("~/.config/bomberman_p2p")
         os.makedirs(config_dir, exist_ok=True)
@@ -204,7 +225,7 @@ class P2PClient:
             "netplay = true",
             f"netplay_mode = {'host' if is_host else 'client'}",
             "netplay_client_swap_input = false",
-            f"netplay_player_index = {self.player_index + 1}",  # Índice base 1
+            f"netplay_player_index = {self.player_index + 1}",  # ÍNDICE BASE 1
             "netplay_delay_frames = 2",
             f"netplay_nickname = \"{self.player_name}\"",
             "netplay_public_announce = false",
@@ -225,30 +246,11 @@ class P2PClient:
         logger.info(f"Arquivo de configuração gerado: {config_path}")
         return config_path
 
-    def wait_for_host(self, host_ip, timeout=10, port=55435):
-        """Espera até que o host esteja aceitando conexões"""
-        import socket
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(timeout)
-        try:
-            sock.connect((host_ip, port))
-            logger.info(f"Host {host_ip} está pronto.")
-            return True
-        except socket.error:
-            logger.warning(f"Host {host_ip} ainda não está pronto.")
-            return False
-        finally:
-            sock.close()
-
     def start_retroarch(self, is_host=False):
         config_path = self.generate_retroarch_config(is_host)
 
-        if not os.path.exists(self.rom_path):
-            logger.error(f"ROM não encontrada: {self.rom_path}")
-            return
-
-        if not os.path.exists(SNES_CORE_PATH):
-            logger.error(f"Core SNES não encontrado: {SNES_CORE_PATH}")
+        if not os.path.exists(config_path):
+            logger.error("Arquivo de configuração não encontrado!")
             return
 
         cmd = [
@@ -260,24 +262,22 @@ class P2PClient:
         ]
 
         if is_host:
-            cmd.extend(["--host"])
+            cmd.append("--host")
             logger.info("Iniciando como HOST...")
-            try:
-                self.socketio.emit('start_game', {'triggered_by': self.peer_id})
-            except Exception as e:
-                logger.warning(f"Erro ao emitir evento start_game: {e}")
         else:
             if not self.peers:
-                logger.warning("Nenhum peer conectado.")
+                logger.warning("Nenhum peer conectado. Não é possível iniciar.")
                 return
 
             host_ip = next(iter(self.peers.values()))['ip']
             logger.info(f"Aguardando host {host_ip} ficar pronto...")
-            if not self.wait_for_host(host_ip, timeout=10):
-                logger.warning("Host não respondeu a tempo. Tentando iniciar mesmo assim...")
 
-            cmd.extend(["--connect", host_ip])
+            if not self.wait_for_host(host_ip, retries=10):
+                logger.error("Timeout ao esperar pelo host.")
+                return
+
             logger.info(f"Conectando ao host em {host_ip}")
+            cmd.extend(["--connect", host_ip])
 
         logger.info(f"Executando RetroArch: {' '.join(cmd)}")
         try:
