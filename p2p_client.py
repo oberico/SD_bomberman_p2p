@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # p2p_client.py
-# Cliente P2P para jogo Super Bomberman 4 (Atualizado)
+# Cliente P2P para Super Bomberman 4 - Versão Atualizada
 
 import os
 import sys
@@ -21,21 +21,20 @@ import socketio as sio_client
 # Detecta automaticamente o caminho do core SNES
 def find_snes_core():
     possible_paths = [
-        "/usr/lib/x86_64-linux-gnu/libretro/snes9x_libretro.so",
-        "/usr/lib/arm-linux-gnueabihf/libretro/snes9x_libretro.so",
-        "/usr/lib/libretro/snes9x_libretro.so"
+        "~/.config/retroarch/cores/snes9x_libretro.so",
+        "/home/joabson/.config/retroarch/cores/snes9x_libretro.so"
     ]
     for path in possible_paths:
         if os.path.exists(path):
             return path
     try:
-        result = subprocess.run(["find", "/usr", "-name", "snes9x_libretro.so"], 
+        result = subprocess.run(["find", "/usr", "-name", "snes9x_libretro.so"],
                                capture_output=True, text=True)
         if result.stdout:
             return result.stdout.strip().split('\n')[0]
     except Exception as e:
         print(f"[AVISO] Não foi possível procurar o core: {e}")
-    return "/usr/lib/libretro/snes9x_libretro.so"  # Fallback
+    return "/home/joabson/.config/retroarch/cores/snes9x_libretro.so"  # Fallback
 
 SNES_CORE_PATH = find_snes_core()
 RETROARCH_PATH = "retroarch"
@@ -56,10 +55,12 @@ class P2PClient:
         self.running = True
         self.client_port = self.find_available_port(5001)
         self.local_ip = self.get_local_ip()
-        self.player_index = 0  # Índice do jogador (0 = Player 1, 1 = Player 2...)
+        self.player_index = 0  # Player index começa em 0 (Player 1), usado como index+1
         self.app = Flask(__name__)
         self.socketio = SocketIO(self.app, cors_allowed_origins="*")
         self.setup_routes()
+
+        # SocketIO client para comunicação com servidor central
         self.sio_client = sio_client.Client()
         self.setup_socketio_client()
 
@@ -222,13 +223,12 @@ class P2PClient:
 
         with open(config_path, 'w') as f:
             f.write('\n'.join(config))
-        logger.info(f"Arquivo de configuração gerado em {config_path}")
+        logger.info(f"Arquivo de configuração gerado: {config_path}")
         return config_path
 
     def start_retroarch(self, is_host=False):
         config_path = self.generate_retroarch_config(is_host)
 
-        # Validações antes de iniciar
         if not os.path.exists(self.rom_path):
             logger.error(f"ROM não encontrada: {self.rom_path}")
             return
@@ -268,7 +268,9 @@ class P2PClient:
             logger.error("Falha ao registrar. Saindo.")
             return
 
-        threading.Thread(target=self.heartbeat_loop).start()
+        heartbeat_thread = threading.Thread(target=self.heartbeat_loop)
+        heartbeat_thread.daemon = True
+        heartbeat_thread.start()
 
         try:
             self.sio_client.connect(f"http://{self.discovery_server}")
