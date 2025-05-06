@@ -264,9 +264,23 @@ class P2PClient:
             "--verbose"
         ]
 
+         # Modo Host
         if is_host:
             cmd.append("--host")
             logger.info("Iniciando como host...")
+            
+            # Notifica todos os peers para iniciar o jogo
+            for peer_id, peer in self.peers.items():
+                if peer_id != self.peer_id:
+                    try:
+                        requests.post(
+                            f"http://{peer['ip']}:{peer['port']}/start_game",
+                            json={"host_id": self.peer_id}
+                        )
+                    except Exception as e:
+                        logger.warning(f"Falha ao notificar peer {peer['name']}: {e}")
+
+        # Modo Cliente
         else:
             if not self.peers:
                 logger.warning("Nenhum peer conectado. Não é possível iniciar.")
