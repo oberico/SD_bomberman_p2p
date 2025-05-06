@@ -247,12 +247,15 @@ class P2PClient:
         return config_path
 
     def start_retroarch(self, is_host=False):
+        """Inicia o RetroArch com as configurações de NetPlay"""
+        DELAY_SECONDS = 3  # Tempo de espera para clientes conectarem
+        
+        if not is_host:
+            logger.info(f"Cliente aguardando {DELAY_SECONDS} segundos para conectar ao host...")
+            time.sleep(DELAY_SECONDS)
+
         config_path = self.generate_retroarch_config(is_host)
-
-        if not os.path.exists(config_path):
-            logger.error("Arquivo de configuração não encontrado!")
-            return
-
+        
         cmd = [
             RETROARCH_PATH,
             "-L", SNES_CORE_PATH,
@@ -263,19 +266,13 @@ class P2PClient:
 
         if is_host:
             cmd.append("--host")
-            logger.info("Iniciando como HOST...")
+            logger.info("Iniciando como host...")
         else:
             if not self.peers:
                 logger.warning("Nenhum peer conectado. Não é possível iniciar.")
                 return
-
+            
             host_ip = next(iter(self.peers.values()))['ip']
-            logger.info(f"Aguardando host {host_ip} ficar pronto...")
-
-            if not self.wait_for_host(host_ip, retries=10):
-                logger.error("Timeout ao esperar pelo host.")
-                return
-
             logger.info(f"Conectando ao host em {host_ip}")
             cmd.extend(["--connect", host_ip])
 
