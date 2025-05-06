@@ -130,6 +130,11 @@ class P2PClient:
         @self.sio_client.on('disconnect')
         def on_disconnect():
             logger.info("Desconectado do servidor de descoberta")
+            
+        @self.sio_client.on('start_game')
+        def on_start_game(data):
+            logger.info("Evento 'start_game' recebido. Iniciando RetroArch...")
+            threading.Thread(target=self.start_retroarch, args=(False,)).start()
 
     def register_with_discovery_server(self):
         """Registra o cliente no servidor de descoberta"""
@@ -226,14 +231,12 @@ class P2PClient:
     def start_retroarch(self, is_host=False):
         config_path = self.generate_retroarch_config(is_host)
         
-        # Verifica se a ROM existe
-        if not os.path.exists(self.rom_path):
-            logger.error(f"ROM não encontrada: {self.rom_path}")
+        if not os.path.exists(config_path):
+            logger.error("Arquivo de configuração não encontrado!")
             return
         
-        # Verifica se o core SNES9x existe
-        if not os.path.exists(SNES_CORE_PATH):
-            logger.error(f"SNES Core não encontrado: {SNES_CORE_PATH}")
+        if not os.path.exists(self.rom_path):
+            logger.error("ROM não encontrada!")
             return
 
         cmd = [
@@ -246,8 +249,11 @@ class P2PClient:
 
         if is_host:
             cmd.extend(["--host"])
+            try:
+                self.socketio.emit('start_game', {'triggered_by': self.peer_id})
+            except Exception as e:
+                logger.warning(f"Erro ao emitir evento start_game: {e}")
         else:
-            # Garante que tem pelo menos um peer conectado
             if not self.peers:
                 logger.warning("Nenhum peer conectado. Não é possível iniciar.")
                 return
@@ -258,7 +264,7 @@ class P2PClient:
         try:
             subprocess.Popen(cmd)
         except Exception as e:
-            logger.error(f"Erro ao executar RetroArch: {e}")
+            logger.error(f"Erro ao iniciar RetroArch: {e}")
 
     def run(self):
         if not self.register_with_discovery_server():
