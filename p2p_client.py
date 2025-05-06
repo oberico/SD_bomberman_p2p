@@ -20,10 +20,10 @@ import socketio as sio_client
 
 # Detecta automaticamente o caminho do core SNES
 def find_snes_core():
-    """Tenta encontrar o caminho correto do core SNES9x"""
     possible_paths = [
-        "~/.config/retroarch/cores/snes9x_libretro.so",
-        "/home/joabson/.config/retroarch/cores/snes9x_libretro.so"
+        "/usr/lib/x86_64-linux-gnu/libretro/snes9x_libretro.so",
+        "/usr/lib/arm-linux-gnueabihf/libretro/snes9x_libretro.so",
+        "/usr/lib/libretro/snes9x_libretro.so"
     ]
     for path in possible_paths:
         if os.path.exists(path):
@@ -35,7 +35,7 @@ def find_snes_core():
             return result.stdout.strip().split('\n')[0]
     except Exception as e:
         print(f"[AVISO] Não foi possível procurar o core: {e}")
-    return "/home/joabson/.config/retroarch/cores/snes9x_libretro.so"  # Fallback
+    return "/usr/lib/libretro/snes9x_libretro.so"  # Fallback
 
 SNES_CORE_PATH = find_snes_core()
 RETROARCH_PATH = "retroarch"
@@ -56,7 +56,7 @@ class P2PClient:
         self.running = True
         self.client_port = self.find_available_port(5001)
         self.local_ip = self.get_local_ip()
-        self.player_index = 0  # Agora será ajustado para índice base 1
+        self.player_index = 0  # Índice do jogador (0 = Player 1, 1 = Player 2...)
         self.app = Flask(__name__)
         self.socketio = SocketIO(self.app, cors_allowed_origins="*")
         self.setup_routes()
@@ -130,14 +130,13 @@ class P2PClient:
         @self.sio_client.on('disconnect')
         def on_disconnect():
             logger.info("Desconectado do servidor de descoberta")
-            
+
         @self.sio_client.on('start_game')
         def on_start_game(data):
             logger.info("Evento 'start_game' recebido. Iniciando RetroArch...")
             threading.Thread(target=self.start_retroarch, args=(False,)).start()
 
     def register_with_discovery_server(self):
-        """Registra o cliente no servidor de descoberta"""
         try:
             response = requests.post(
                 f"http://{self.discovery_server}/register",
@@ -166,7 +165,6 @@ class P2PClient:
             return False
 
     def get_player_index(self):
-        """Determina o índice do jogador baseado na ordem de conexão"""
         if not self.peers:
             return 0
         sorted_peers = sorted(self.peers.items(), key=lambda x: x[1].get('last_seen', 0))
@@ -206,7 +204,7 @@ class P2PClient:
             "netplay = true",
             f"netplay_mode = {'host' if is_host else 'client'}",
             "netplay_client_swap_input = false",
-            f"netplay_player_index = {self.player_index + 1}",  # Índice base 1
+            f"netplay_player_index = {self.player_index + 1}",  # Ajustado para base 1
             "netplay_delay_frames = 2",
             f"netplay_nickname = \"{self.player_name}\"",
             "netplay_public_announce = false",
@@ -214,7 +212,7 @@ class P2PClient:
             "netplay_spectator_mode_enable = false",
             "netplay_use_mitm_server = false",
             'savefile_directory = "/tmp"',
-            "netplay_ip_port = 55435",
+            "netplay_ip_port = 55435"
         ]
 
         if not is_host:
@@ -224,19 +222,18 @@ class P2PClient:
 
         with open(config_path, 'w') as f:
             f.write('\n'.join(config))
-        logger.info(f"Arquivo de configuração gerado: {config_path}")
-
+        logger.info(f"Arquivo de configuração gerado em {config_path}")
         return config_path
 
     def start_retroarch(self, is_host=False):
         config_path = self.generate_retroarch_config(is_host)
-        
-        if not os.path.exists(config_path):
-            logger.error("Arquivo de configuração não encontrado!")
-            return
-        
+
+        # Validações antes de iniciar
         if not os.path.exists(self.rom_path):
-            logger.error("ROM não encontrada!")
+            logger.error(f"ROM não encontrada: {self.rom_path}")
+            return
+        if not os.path.exists(SNES_CORE_PATH):
+            logger.error(f"SNES Core não encontrado: {SNES_CORE_PATH}")
             return
 
         cmd = [
@@ -264,7 +261,7 @@ class P2PClient:
         try:
             subprocess.Popen(cmd)
         except Exception as e:
-            logger.error(f"Erro ao iniciar RetroArch: {e}")
+            logger.error(f"Erro ao executar RetroArch: {e}")
 
     def run(self):
         if not self.register_with_discovery_server():
@@ -322,7 +319,7 @@ class P2PClient:
 def main():
     if len(sys.argv) < 4:
         print(f"Uso: {sys.argv[0]} <nome_jogador> <servidor_descoberta> <caminho_rom>")
-        print("Exemplo: python3 p2p_client.py berico 192.168.38.1:5000 /home/usuario/ROMs/super_bomberman_4.sfc")
+        print("Exemplo: python3 p2p_client.py berico 192.168.38.1:5000 /path/to/super_bomberman_4.sfc")
         sys.exit(1)
 
     player_name = sys.argv[1]
