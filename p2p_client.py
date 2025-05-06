@@ -22,9 +22,8 @@ import socketio as sio_client
 def find_snes_core():
     """Tenta encontrar o caminho correto do core SNES9x"""
     possible_paths = [
-        "/usr/lib/x86_64-linux-gnu/libretro/snes9x_libretro.so",
-        "/usr/lib/arm-linux-gnueabihf/libretro/snes9x_libretro.so",
-        "/usr/lib/libretro/snes9x_libretro.so"
+        "~/.config/retroarch/cores/snes9x_libretro.so",
+        "/home/joabson/.config/retroarch/cores/snes9x_libretro.so"
     ]
     for path in possible_paths:
         if os.path.exists(path):
@@ -36,7 +35,7 @@ def find_snes_core():
             return result.stdout.strip().split('\n')[0]
     except Exception as e:
         print(f"[AVISO] Não foi possível procurar o core: {e}")
-    return "/usr/lib/libretro/snes9x_libretro.so"  # Fallback
+    return "/home/joabson/.config/retroarch/cores/snes9x_libretro.so"  # Fallback
 
 SNES_CORE_PATH = find_snes_core()
 RETROARCH_PATH = "retroarch"
