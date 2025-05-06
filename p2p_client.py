@@ -224,8 +224,8 @@ class P2PClient:
         config = [
             "netplay = true",
             f"netplay_mode = {'host' if is_host else 'client'}",
+            f"netplay_player_index = {self.player_index + 1}",
             "netplay_client_swap_input = false",
-            f"netplay_player_index = {self.player_index + 1}",  # ÍNDICE BASE 1
             "netplay_delay_frames = 2",
             f"netplay_nickname = \"{self.player_name}\"",
             "netplay_public_announce = false",
@@ -233,9 +233,8 @@ class P2PClient:
             "netplay_spectator_mode_enable = false",
             "netplay_use_mitm_server = false",
             'savefile_directory = "/tmp"',
-            "netplay_ip_port = 55435"
+            "netplay_ip_port = 55435",
         ]
-
         if not is_host:
             host_peer = next((peer for pid, peer in self.peers.items() if pid != self.peer_id), None)
             if host_peer:
@@ -247,15 +246,19 @@ class P2PClient:
         return config_path
 
     def start_retroarch(self, is_host=False):
-        """Inicia o RetroArch com as configurações de NetPlay"""
-        DELAY_SECONDS = 3  # Tempo de espera para clientes conectarem
-        
-        if not is_host:
-            logger.info(f"Cliente aguardando {DELAY_SECONDS} segundos para conectar ao host...")
-            time.sleep(DELAY_SECONDS)
-
+        """Inicia o RetroArch com NetPlay configurado"""
         config_path = self.generate_retroarch_config(is_host)
-        
+
+        # Validações pré-execução
+        if not os.path.exists(self.rom_path):
+            logger.error(f"ROM não encontrada: {self.rom_path}")
+            return
+
+        if not os.path.exists(SNES_CORE_PATH):
+            logger.error(f"SNES Core não encontrado: {SNES_CORE_PATH}")
+            return
+
+        # Monta o comando base
         cmd = [
             RETROARCH_PATH,
             "-L", SNES_CORE_PATH,
@@ -264,7 +267,7 @@ class P2PClient:
             "--verbose"
         ]
 
-         # Modo Host
+        # Modo Host
         if is_host:
             cmd.append("--host")
             logger.info("Iniciando como host...")
@@ -292,6 +295,7 @@ class P2PClient:
 
         logger.info(f"Executando RetroArch: {' '.join(cmd)}")
         try:
+            # Inicia o processo sem bloquear o script
             subprocess.Popen(cmd)
         except Exception as e:
             logger.error(f"Erro ao iniciar RetroArch: {e}")
