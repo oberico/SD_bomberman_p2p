@@ -1,8 +1,7 @@
 #!/bin/bash
 # quick_start.sh
-# Script para inicialização rápida do sistema P2P para Super Bomberman 4
+# Script para inicialização rápida do sistema P2P
 
-# Cores para o terminal
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
