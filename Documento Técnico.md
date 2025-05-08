@@ -217,18 +217,25 @@ Todas as mensagens entre cliente e servidor usam **JSON**, um formato leve e amp
 
 ### Pré-requisitos:
 
-- Python 3.6 ou superior
-- RetroArch instalado
 - ROM do Super Bomberman 4
-- Dispositivos conectados na mesma rede (usando smartphone como hotspot)
+- Dispositivos conectados na mesma rede
 
 ### Passos para Execução:
 
 1. **Configuração do Ambiente:**
-   ```bash
-   chmod +x setup_environment.sh
-   ./setup_environment.sh
-   ```
+   1.1 Instalar as Dependências
+```bash
+sudo apt install -y python3 python3-pip retroarch libretro-snes9x
+```
+
+   1.2 Instalar bibliotecas Python necessárias
+```bash
+pip install flask flask-socketio socketio requests netifaces
+```
+1.3 Configurar RetroArch (caso ainda não tenha)
+```bash
+mkdir -p ~/.config/retroarch/ 
+```
 
 2. **Configuração do RetroArch:**
    ```bash
