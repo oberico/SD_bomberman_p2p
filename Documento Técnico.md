@@ -226,15 +226,15 @@ Todas as mensagens entre cliente e servidor usam **JSON**, um formato leve e amp
 1. **Configuração do Ambiente:**
 	1.  Instalar as Dependências
 	
-	         `sudo apt install -y python3 python3-pip retroarch libretro-snes9x`
+	         sudo apt install -y python3 python3-pip retroarch libretro-snes9x
 
 	2. Instalar bibliotecas Python necessárias
 	    
-	         `pip install flask flask-socketio socketio requests netifaces`
+	         pip install flask flask-socketio socketio requests netifaces
 
 	3. Configurar RetroArch (caso ainda não tenha)
 	
-	         `pip install flask flask-socketio socketio requests netifaces`
+	         pip install flask flask-socketio socketio requests netifaces
 	
 
 2. **Configuração do RetroArch:**
