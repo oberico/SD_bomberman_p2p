@@ -1,5 +1,10 @@
 # Projeto: Super Bomberman 4 Online via RetroArch NetPlay  
 
+## Trabalho Final da Matéria da Sistemas Distribuídos
+**Grupo**
+Ramon Guimarães Cruz - 11821ECP002
+Victor José Teixeira - 11821ECP008
+
 ## 🧰 Dependências Necessárias
 
 # Dependências
