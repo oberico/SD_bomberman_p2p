@@ -71,8 +71,6 @@ ROM_DIR="$HOME/ROMs/SNES"
 mkdir -p "$ROM_DIR"
 
 echo "Certifique-se de ter a ROM do Super Bomberman 4 em $ROM_DIR"
-echo "Nota: Por questões legais, não podemos baixar automaticamente a ROM."
-echo "Você precisará fornecer sua própria cópia da ROM."
 echo ""
 
 # Criar diretório para a ROM
@@ -81,3 +79,5 @@ mkdir -p "$HOME/.config/retroarch/system"
 
 echo "Configuração concluída!"
 echo "Execute o cliente P2P com: python3 p2p_client.py <nome_jogador> <ip_servidor>:5000 $ROM_DIR/super_bomberman_4.sfc"
+echo "ou com"
+echo "   ./quick_start.sh client <nome_jogador> /super_bomberman_4.sfc"
